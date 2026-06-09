@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuzu Graph Viewer</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+</head>
+<body>
+
+    <!-- Connection Screen -->
+    <div id="connect-screen" class="screen active">
+        <div class="glass-card connect-box">
+            <h1>Kuzu Graph Viewer</h1>
+            <p>Connect to your local database</p>
+            <div class="input-group">
+                <input type="text" id="db-path" placeholder="e.g. ../test_db" value="../test_db">
+                <button id="connect-btn">Connect</button>
+            </div>
+            <label class="readonly-toggle">
+                <input type="checkbox" id="read-only-checkbox" checked>
+                <span>Read-only mode (recommended; doesn't lock the DB for writers)</span>
+            </label>
+            <div id="connect-error" class="error-msg"></div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="main-screen" class="screen">
+        <header class="glass-header">
+            <div class="brand">Kuzu Viewer</div>
+            <div class="tabs">
+                <button class="tab-btn active" data-view="graph">Graph View</button>
+                <button class="tab-btn" data-view="table">Table View</button>
+            </div>
+            <div class="status" id="db-status">Connected to DB</div>
+            <button id="disconnect-btn" class="small-btn">Close DB / Open Another</button>
+        </header>
+
+        <div class="content">
+            <!-- Graph View -->
+            <div id="graph-view" class="view active">
+                <div id="cy"></div>
+                <div class="graph-panel glass-card">
+                    <h3>Node Details</h3>
+                    <div id="node-details">Select a node or edge...</div>
+                </div>
+            </div>
+
+            <!-- Table View -->
+            <div id="table-view" class="view">
+                <div class="table-layout">
+                    <!-- Schema Sidebar -->
+                    <div class="schema-sidebar glass-card">
+                        <div class="sidebar-header">
+                            <h3>Database Schema</h3>
+                            <button id="refresh-schema" class="small-btn">Refresh</button>
+                        </div>
+                        <ul id="schema-list">
+                            <!-- Tables injected here -->
+                        </ul>
+                    </div>
+
+                    <!-- Data Area -->
+                    <div class="data-area glass-card">
+                        <div class="data-header">
+                            <h2 id="current-table-name">Select a Table</h2>
+                            <button id="run-query-btn" class="primary-btn">Run Custom Cypher</button>
+                        </div>
+                        <div class="table-container" id="data-table-container">
+                            <p class="placeholder-text">Table data will appear here.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cypher Modal -->
+    <div id="cypher-modal" class="modal">
+        <div class="modal-content glass-card">
+            <span class="close-btn">&times;</span>
+            <h2>Execute Cypher Query</h2>
+            <textarea id="cypher-input" rows="4" placeholder="CREATE NODE TABLE..."></textarea>
+            <button id="execute-btn" class="primary-btn">Execute</button>
+            <div id="cypher-result" class="result-box"></div>
+        </div>
+    </div>
+
+    <script src="app.js?v=3"></script>
+</body>
+</html>

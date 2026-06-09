@@ -1,0 +1,11 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+tsconfig.json
+**/*.map
+**/*.ts
+node_modules/.bin/**
+node_modules/kuzu/kuzu-source/**
+node_modules/kuzu/prebuilt/**
+*.vsix
