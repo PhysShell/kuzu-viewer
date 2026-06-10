@@ -28,9 +28,9 @@ jobs:
           - os: macos-14
             target: darwin-arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -46,7 +46,7 @@ jobs:
         run: npx @vscode/vsce package --target ${{ matrix.target }} -o kuzu-explorer-${{ matrix.target }}.vsix
 
       - name: Upload .vsix artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: kuzu-explorer-${{ matrix.target }}
           path: kuzu-explorer/kuzu-explorer-${{ matrix.target }}.vsix
