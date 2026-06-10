@@ -1,0 +1,59 @@
+name: Publish VS Code Extension
+
+# Build a platform-specific .vsix on each OS and publish to the VS Code
+# Marketplace. Pushing a tag like v0.1.0 publishes; manual runs only build.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: kuzu-explorer
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: windows-latest
+            target: win32-x64
+          - os: macos-13
+            target: darwin-x64
+          - os: macos-14
+            target: darwin-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: kuzu-explorer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Package (.vsix for ${{ matrix.target }})
+        run: npx @vscode/vsce package --target ${{ matrix.target }} -o kuzu-explorer-${{ matrix.target }}.vsix
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuzu-explorer-${{ matrix.target }}
+          path: kuzu-explorer/kuzu-explorer-${{ matrix.target }}.vsix
+
+      # Only publish on a version tag push, not on manual/dispatch builds.
+      - name: Publish to Marketplace
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npx @vscode/vsce publish --target ${{ matrix.target }} --packagePath kuzu-explorer-${{ matrix.target }}.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

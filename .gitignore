@@ -2,7 +2,7 @@
 node_modules/
 out/
 *.vsix
-
+.vscode/
 # Python
 .venv/
 __pycache__/
@@ -23,3 +23,6 @@ test_db/
 .DS_Store
 Thumbs.db
 *.log
+
+# kuzu-explorer
+**/.vscode/

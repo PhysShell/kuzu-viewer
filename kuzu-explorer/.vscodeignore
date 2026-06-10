@@ -8,4 +8,5 @@ tsconfig.json
 node_modules/.bin/**
 node_modules/kuzu/kuzu-source/**
 node_modules/kuzu/prebuilt/**
+media/icon-source.svg
 *.vsix

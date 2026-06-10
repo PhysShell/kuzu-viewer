@@ -18,6 +18,14 @@
     "Visualization",
     "Other"
   ],
+  "keywords": [
+    "kuzu",
+    "graph database",
+    "cypher",
+    "graph",
+    "database"
+  ],
+  "icon": "media/icon.png",
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
