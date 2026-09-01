@@ -13,6 +13,10 @@ node_modules/.bin/**
 # only the wrapper JS + compiled kuzujs.node).
 node_modules/kuzu/kuzu-source/**
 node_modules/kuzu/prebuilt/**
+# @ladybugdb/core: same treatment — keep wrapper JS + lbugjs.node native addon.
+node_modules/@ladybugdb/core/node_modules/**
+node_modules/@ladybugdb/core/test/**
+
 
 # cytoscape: the graph webview only loads dist/cytoscape.min.js.
 node_modules/cytoscape/src/**
