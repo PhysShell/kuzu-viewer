@@ -2,7 +2,7 @@
   "name": "kuzu-explorer",
   "displayName": "Kuzu Explorer",
   "description": "Browse Kuzu graph databases inside VS Code: schema tree, table data, Cypher queries and a graph view.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "gaintlabs",
   "license": "MIT",
   "repository": {
@@ -34,9 +34,18 @@
         "viewType": "kuzuExplorer.dbEditor",
         "displayName": "Kuzu Database (Graph)",
         "selector": [
-          { "filenamePattern": "*.kuzu" },
-          { "filenamePattern": "*.kz" },
-          { "filenamePattern": "*.kuzudb" }
+          {
+            "filenamePattern": "*.kuzu"
+          },
+          {
+            "filenamePattern": "*.kz"
+          },
+          {
+            "filenamePattern": "*.kuzudb"
+          },
+          {
+            "filenamePattern": "*.ladybug"
+          }
         ],
         "priority": "default"
       }
@@ -177,7 +186,8 @@
   },
   "dependencies": {
     "cytoscape": "^3.30.0",
-    "kuzu": "^0.11.3"
+    "kuzu": "^0.11.3",
+    "@ladybugdb/core": "^0.20.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
