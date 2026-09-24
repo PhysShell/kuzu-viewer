@@ -23,12 +23,59 @@ const os = require("os");
 const path = require("path");
 const readline = require("readline");
 
-let kuzu;
-try {
-  kuzu = require("kuzu");
-} catch (e) {
-  // Report the load failure on the first request rather than crashing silently.
-  kuzu = null;
+// Two engines, chosen PER FILE by its storage-format magic header:
+//   "LBUG"  -> LadybugDB (@ladybugdb/core), the maintained successor
+//   "KUZU"  -> Kuzu 0.11.x, for databases written by the original engine
+// Both are bundled; neither is a fallback for the other. A file written by one
+// is unreadable by the other ("not a valid ... database file"), so the header,
+// not preference, decides.
+const ENGINES = {};
+function loadEngine(name, pkg) {
+  if (ENGINES[name] !== undefined) return ENGINES[name];
+  try {
+    ENGINES[name] = require(pkg);
+  } catch (e) {
+    ENGINES[name] = null;
+  }
+  return ENGINES[name];
+}
+loadEngine("ladybug", "@ladybugdb/core");
+loadEngine("kuzu", "kuzu");
+
+// Peek the magic at the head of the DB file. Opening a file with the wrong
+// engine fails at query time with a confusing "not a valid ... database file!",
+// so we read the header ourselves and report a clear error instead.
+function detectFormat(dbPath) {
+  const fd = fs.openSync(dbPath, "r");
+  try {
+    const buf = Buffer.alloc(8);
+    fs.readSync(fd, buf, 0, 8, 0);
+    const magic = buf.toString("ascii", 0, 4);
+    if (magic === "LBUG") return "ladybug";
+    if (magic === "KUZU") return "kuzu";
+    return null;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function engineFor(dbPath) {
+  const fmt = detectFormat(dbPath);
+  if (fmt === null) {
+    throw new Error(
+      `Unrecognised database format header in ${dbPath}. ` +
+      `Supported: Kuzu (KUZU header) and LadybugDB (LBUG header).`
+    );
+  }
+  const mod = ENGINES[fmt];
+  if (!mod) {
+    throw new Error(
+      `This database is ${fmt === "ladybug" ? "LadybugDB" : "Kuzu"}-format but ` +
+      `its engine module (${fmt === "ladybug" ? "@ladybugdb/core" : "kuzu"}) ` +
+      `failed to load. Run \`npm install\` in the extension folder.`
+    );
+  }
+  return { mod, version: mod.VERSION, format: fmt };
 }
 
 const WRITE_KEYWORDS = new Set([
@@ -42,6 +89,8 @@ const state = {
   path: null,
   readOnly: false,
   tempDir: null,
+  engine: null,
+  engineVersion: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -141,7 +190,11 @@ function copyDbForReadonly(srcPath) {
     // File-based DB: copy the main file plus its WAL / shadow siblings.
     const parent = path.dirname(abs) || ".";
     const base = path.basename(abs);
-    const stem = base.endsWith(".kuzu") ? base.slice(0, -".kuzu".length) : base;
+    const stem = [".kuzu", ".kuzudb", ".ladybug"].find((sfx) =>
+      base.endsWith(sfx)
+    )
+      ? base.slice(0, base.lastIndexOf("."))
+      : base;
     let copied = 0;
     for (const fname of fs.readdirSync(parent)) {
       if (fname === base || fname.startsWith(stem + ".")) {
@@ -161,9 +214,10 @@ function copyDbForReadonly(srcPath) {
 
 function openDatabase(dbPath, readOnly) {
   // Database(databasePath, bufferManagerSize=0, enableCompression=true, readOnly=false, maxDBSize=0)
-  const db = new kuzu.Database(dbPath, 0, true, !!readOnly, 0);
-  const conn = new kuzu.Connection(db);
-  return { db, conn };
+  const { mod, version, format } = engineFor(dbPath);
+  const db = new mod.Database(dbPath, 0, true, !!readOnly, 0);
+  const conn = new mod.Connection(db);
+  return { db, conn, engine: { format, version } };
 }
 
 // Run a query and normalize to { columns, rows }. connection.query() may resolve
@@ -207,13 +261,18 @@ function stripInternal(obj) {
 
 const methods = {
   async ping() {
-    return { pong: true, kuzuVersion: kuzu ? kuzu.VERSION : null };
+    return {
+      pong: true,
+      engines: Object.fromEntries(
+        Object.entries(ENGINES).map(([k, m]) => [k, m ? m.VERSION : null])
+      ),
+    };
   },
 
   async connect({ path: dbPath, readOnly = true }) {
-    if (!kuzu) {
+    if (!ENGINES.kuzu && !ENGINES.ladybug) {
       throw new Error(
-        "Failed to load the 'kuzu' native module in the worker. " +
+        "Failed to load either graph engine in the worker. " +
         "Run `npm install` in the extension folder."
       );
     }
@@ -222,16 +281,18 @@ const methods = {
     }
     await releaseDb();
     try {
-      const { db, conn } = openDatabase(dbPath, readOnly);
+      const { db, conn, engine } = openDatabase(dbPath, readOnly);
       // Force initialization now so lock errors surface here, not on first query.
       await conn.query("RETURN 1");
       state.db = db;
       state.conn = conn;
       state.path = dbPath;
       state.readOnly = !!readOnly;
+      state.engine = engine.format;
+      state.engineVersion = engine.version;
       const mode = readOnly ? "read-only" : "read-write";
       return {
-        message: `Connected to ${dbPath} (${mode})`,
+        message: `Connected to ${dbPath} (${mode}, ${engine.format} ${engine.version})`,
         readOnly: !!readOnly,
         tempCopy: false,
         path: dbPath,
@@ -445,4 +506,9 @@ process.on("SIGTERM", async () => { await releaseDb(); process.exit(0); });
 process.on("SIGINT", async () => { await releaseDb(); process.exit(0); });
 
 // Announce readiness on stderr (not part of the protocol).
-log("worker ready, kuzu " + (kuzu ? kuzu.VERSION : "NOT LOADED"));
+log(
+  "worker ready; engines: kuzu " +
+    (ENGINES.kuzu ? ENGINES.kuzu.VERSION : "NOT LOADED") +
+    ", ladybug " +
+    (ENGINES.ladybug ? ENGINES.ladybug.VERSION : "NOT LOADED")
+);
