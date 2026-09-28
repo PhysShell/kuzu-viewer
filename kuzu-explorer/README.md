@@ -18,7 +18,7 @@ Click a table to load its rows into a clean, sortable results grid — no query 
 A built-in query panel lets you write and execute Cypher (**Ctrl/Cmd + Enter**) and see results as a table. Write queries are blocked automatically in read-only mode.
 
 ### 🕸️ Interactive graph view
-Visualize your data as a graph powered by [Cytoscape](https://js.cytoscape.org/). Nodes are labeled by a real name property and colored by table type; click any node or edge to inspect its properties.
+Visualize your data as a graph powered by [Cytoscape](https://js.cytoscape.org/). Nodes are labeled by a real name property and colored by table type; click any node or edge to inspect its properties. Use **Group by** to circle each node together with the nodes it owns through a relationship (e.g. a table and its columns via `HAS_COLUMN`), labeled by `db_id`. The details pane can be resized by dragging its edge, or hidden.
 
 ### 📂 Open a database in one click
 Right-click a database file or folder in the Explorer and choose **Open as Kuzu Database**, or double-click a `.kuzu` / `.kz` / `.kuzudb` file.
