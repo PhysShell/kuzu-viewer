@@ -52,6 +52,7 @@ jobs:
       # Only publish on a version tag push, not on manual/dispatch builds.
       - name: Publish to Marketplace
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npx @vscode/vsce publish --target ${{ matrix.target }} --packagePath kuzu-explorer-${{ matrix.target }}.vsix
+        # The target is baked into the .vsix; vsce rejects --target with --packagePath.
+        run: npx @vscode/vsce publish --packagePath kuzu-explorer-${{ matrix.target }}.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
