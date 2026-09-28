@@ -16,6 +16,21 @@ node_modules/kuzu/prebuilt/**
 # @ladybugdb/core: same treatment — keep wrapper JS + lbugjs.node native addon.
 node_modules/@ladybugdb/core/node_modules/**
 node_modules/@ladybugdb/core/test/**
+# Its install step copies the platform binary into @ladybugdb/core, so the
+# per-platform sub-package (core-<platform>-<arch>) is a duplicate.
+node_modules/@ladybugdb/core-*/**
+# apache-arrow and its deps are declared by @ladybugdb/core but never loaded
+# by the runtime JS (it only uses Node built-ins + lbugjs.node).
+node_modules/apache-arrow/**
+node_modules/flatbuffers/**
+node_modules/json-with-bigint/**
+node_modules/tslib/**
+node_modules/@isaacs/**
+# Engine install/build tooling, not used at runtime.
+node_modules/kuzu/node_modules/**
+node_modules/kuzu/install.js
+node_modules/@ladybugdb/core/install.js
+scripts/**
 
 
 # cytoscape: the graph webview only loads dist/cytoscape.min.js.
@@ -26,6 +41,11 @@ node_modules/cytoscape/tests-examples/**
 node_modules/cytoscape/*.mjs
 node_modules/cytoscape/*.md
 node_modules/cytoscape/playwright.config.js
+node_modules/cytoscape/.*
+node_modules/cytoscape/.github/**
+node_modules/cytoscape/dist/cytoscape.cjs.js
+node_modules/cytoscape/dist/cytoscape.umd.js
+node_modules/cytoscape/dist/*.mjs
 
 # kuzu's install-time build tooling (cmake-js, prebuild-install, axios, ...).
 # None of these are loaded at extension runtime.
