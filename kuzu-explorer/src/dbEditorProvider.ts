@@ -45,7 +45,7 @@ export class KuzuDbEditorProvider implements vscode.CustomReadonlyEditorProvider
       return;
     }
 
-    const graphLimit = vscode.workspace.getConfiguration("kuzuExplorer").get<number>("graphLimit", 500);
+    const graphLimit = vscode.workspace.getConfiguration("kuzuExplorer").get<number>("graphLimit", 2000);
     webviewPanel.webview.html = graphHtml(webviewPanel.webview, this.extensionUri);
     const sub = attachGraph(webviewPanel.webview, this.client, graphLimit);
     webviewPanel.onDidDispose(() => sub.dispose());

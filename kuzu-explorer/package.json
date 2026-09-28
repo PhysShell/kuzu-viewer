@@ -163,7 +163,7 @@
         },
         "kuzuExplorer.graphLimit": {
           "type": "number",
-          "default": 500,
+          "default": 2000,
           "description": "Maximum number of nodes/edges fetched per table for the graph view."
         }
       }

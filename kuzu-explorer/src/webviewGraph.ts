@@ -167,11 +167,18 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
       octx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var zoom = cy.zoom(), pan = cy.pan();
       var fg = getComputedStyle(document.body).getPropertyValue('--vscode-foreground').trim() || '#ccc';
+      var labels = [];
       cy.nodes('[?isCluster]').forEach(function (p) {
-        var bb = p.children().boundingBox({ includeLabels: false });
-        var cx = (bb.x1 + bb.x2) / 2 * zoom + pan.x;
-        var cyy = (bb.y1 + bb.y2) / 2 * zoom + pan.y;
-        var r = (Math.sqrt(bb.w * bb.w + bb.h * bb.h) / 2 + 10) * zoom;
+        var kids = p.children();
+        var bb = kids.boundingBox({ includeLabels: false });
+        var mx = (bb.x1 + bb.x2) / 2, my = (bb.y1 + bb.y2) / 2, far = 0;
+        kids.forEach(function (k) {
+          var q = k.position();
+          far = Math.max(far, Math.sqrt((q.x - mx) * (q.x - mx) + (q.y - my) * (q.y - my)));
+        });
+        var cx = mx * zoom + pan.x;
+        var cyy = my * zoom + pan.y;
+        var r = (far + CLUSTER_MARGIN) * zoom;
         var color = p.data('color');
         var sel = p.selected();
         octx.beginPath();
@@ -183,22 +190,114 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
         octx.lineWidth = sel ? 2.5 : 1.5;
         octx.strokeStyle = sel ? '#e0a458' : color;
         octx.stroke();
-        if (r > 14) {
-          octx.globalAlpha = 1;
-          octx.fillStyle = fg;
-          octx.font = 'bold ' + Math.max(10, Math.min(16, 13 * zoom * 4)) + 'px ' + getComputedStyle(document.body).fontFamily;
-          octx.textAlign = 'center';
-          octx.textBaseline = 'bottom';
-          octx.fillText(p.data('label'), cx, cyy - r - 3);
-        }
+        if (r > 14) labels.push({ text: p.data('label'), x: cx, y: cyy - r - 3, r: r, sel: sel });
       });
+      // Labels go above their circle; bigger (and selected) groups win when
+      // labels would collide, the rest appear as you zoom in.
       octx.globalAlpha = 1;
+      octx.fillStyle = fg;
+      var size = Math.max(10, Math.min(16, 13 * zoom * 4));
+      octx.font = 'bold ' + size + 'px ' + getComputedStyle(document.body).fontFamily;
+      octx.textAlign = 'center';
+      octx.textBaseline = 'bottom';
+      labels.sort(function (a, b) { return (b.sel - a.sel) || (b.r - a.r); });
+      var drawn = [];
+      labels.forEach(function (l) {
+        var w = octx.measureText(l.text).width;
+        var box = { x1: l.x - w / 2 - 2, x2: l.x + w / 2 + 2, y1: l.y - size - 2, y2: l.y + 2 };
+        var hit = drawn.some(function (d) { return box.x1 < d.x2 && box.x2 > d.x1 && box.y1 < d.y2 && box.y2 > d.y1; });
+        if (hit) return;
+        drawn.push(box);
+        octx.fillText(l.text, l.x, l.y);
+      });
+    }
+
+    // Grouped layout: members of each group are packed in a sunflower around
+    // the group owner, then the groups (as single discs) are laid out with a
+    // force layout and pushed apart until no two circles overlap.
+    var MEMBER_SPACING = 34, CLUSTER_MARGIN = 24, CLUSTER_GAP = 36;
+    var GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+    function groupedLayout(parents) {
+      var items = [], itemOf = {};
+      parents.forEach(function (p) {
+        var ownerId = p.id().slice('cluster:'.length);
+        var kids = p.children();
+        var owner = kids.filter(function (k) { return k.id() === ownerId; });
+        var others = kids.difference(owner);
+        var offsets = others.map(function (k, i) {
+          var rad = MEMBER_SPACING * Math.sqrt(i + 1);
+          return { x: rad * Math.cos(i * GOLDEN_ANGLE), y: rad * Math.sin(i * GOLDEN_ANGLE) };
+        });
+        var far = offsets.length ? MEMBER_SPACING * Math.sqrt(offsets.length) : 0;
+        var item = { owner: owner, others: others, offsets: offsets, r: far + CLUSTER_MARGIN };
+        kids.forEach(function (k) { itemOf[k.id()] = items.length; });
+        items.push(item);
+      });
+      cy.nodes().orphans().filter(function (n) { return !n.data('isCluster'); }).forEach(function (n) {
+        itemOf[n.id()] = items.length;
+        items.push({ owner: n, others: cy.collection(), offsets: [], r: 16 });
+      });
+
+      // Force layout on one disc per item, sized so the layout knows about overlap.
+      var metaEls = items.map(function (it, i) { return { data: { id: 'm' + i, d: it.r * 2 } }; });
+      var seen = {};
+      cy.edges().forEach(function (e) {
+        var a = itemOf[e.source().id()], b = itemOf[e.target().id()];
+        if (a === undefined || b === undefined || a === b) return;
+        var key = a < b ? a + '-' + b : b + '-' + a;
+        if (seen[key]) return;
+        seen[key] = true;
+        metaEls.push({ data: { id: 'me' + key, source: 'm' + a, target: 'm' + b } });
+      });
+      var meta = cytoscape({
+        headless: true, styleEnabled: true, elements: metaEls,
+        style: [{ selector: 'node', style: { width: 'data(d)', height: 'data(d)' } }]
+      });
+      meta.layout({
+        name: 'cose', animate: false, randomize: true, fit: false,
+        nodeOverlap: 40, componentSpacing: 120, gravity: 0.6,
+        nodeRepulsion: function (n) { var d = n.data('d'); return 4000 + d * d * 6; },
+        idealEdgeLength: function (e) { return (e.source().data('d') + e.target().data('d')) / 2 + 40; }
+      }).run();
+      var pos = items.map(function (it, i) { var q = meta.getElementById('m' + i).position(); return { x: q.x, y: q.y }; });
+      meta.destroy();
+
+      // Relax: push overlapping discs apart.
+      for (var iter = 0; iter < 300; iter++) {
+        var moved = false;
+        for (var i = 0; i < items.length; i++) {
+          for (var j = i + 1; j < items.length; j++) {
+            var dx = pos[j].x - pos[i].x, dy = pos[j].y - pos[i].y;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            var need = items[i].r + items[j].r + CLUSTER_GAP;
+            if (dist >= need) continue;
+            if (dist < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; dist = Math.sqrt(dx * dx + dy * dy); }
+            var push = (need - dist) / 2 + 0.5;
+            pos[i].x -= dx / dist * push; pos[i].y -= dy / dist * push;
+            pos[j].x += dx / dist * push; pos[j].y += dy / dist * push;
+            moved = true;
+          }
+        }
+        if (!moved) break;
+      }
+
+      cy.batch(function () {
+        items.forEach(function (it, i) {
+          it.owner.position({ x: pos[i].x, y: pos[i].y });
+          it.others.forEach(function (k, idx) {
+            k.position({ x: pos[i].x + it.offsets[idx].x, y: pos[i].y + it.offsets[idx].y });
+          });
+        });
+      });
+      cy.fit(undefined, 40);
     }
 
     function runLayout() {
       if (!cy) return;
       if (!hasSize()) { layoutPending = true; return; }
       layoutPending = false;
+      var parents = cy.nodes('[?isCluster]');
+      if (parents.nonempty()) { groupedLayout(parents); return; }
       cy.layout({
         name: 'cose', animate: false, fit: true, padding: 30,
         nodeRepulsion: 8000, idealEdgeLength: 80, nestingFactor: 1.2, componentSpacing: 60
@@ -287,7 +386,7 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
         var d = byId[s] || {};
         var name = d.db_id !== undefined ? d.db_id : d.label;
         nodes.push({ data: {
-          id: 'cluster:' + s, isCluster: true, label: String(name),
+          id: 'cluster:' + s, isCluster: true, label: String(name), db_id: d.db_id,
           type: (d.type || '') + ' cluster', members: clusters[s] + 1,
           color: d.color || '#4f8cc9'
         } });
@@ -312,6 +411,13 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
       var clusterCount = els.nodes.length - raw.nodes.length;
       statusEl.textContent = raw.nodes.length + ' nodes, ' + raw.edges.length + ' edges' +
         (clusterCount ? ', ' + clusterCount + ' groups' : '');
+      if (raw.truncated && raw.truncated.length) {
+        var warn = document.createElement('div');
+        warn.className = 'error';
+        warn.textContent = 'Showing only the first ' + raw.limit + ' rows of: ' + raw.truncated.join(', ') +
+          '. Increase the kuzuExplorer.graphLimit setting to see everything.';
+        statusEl.appendChild(warn);
+      }
       detailsEl.className = 'k'; detailsEl.textContent = 'Select a node or edge.';
       if (cy) { cy.destroy(); cy = null; paintClusters(); }
       try {
@@ -327,7 +433,7 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
               'width': 28, 'height': 28 } },
             { selector: 'node[?isCluster]', style: {
               'background-opacity': 0, 'border-width': 0, 'label': '',
-              'padding': '22%', 'padding-relative-to': 'max' } },
+              'padding': '12px' } },
             { selector: 'edge', style: {
               'width': 1.5, 'line-color': '#999', 'target-arrow-color': '#999',
               'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
@@ -356,7 +462,7 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
       if (msg.type === 'loading') { statusEl.textContent = 'Loading…'; }
       else if (msg.type === 'graph') {
         if (typeof cytoscape === 'undefined') { statusEl.textContent = 'cytoscape failed to load'; return; }
-        raw = { nodes: msg.nodes, edges: msg.edges };
+        raw = { nodes: msg.nodes, edges: msg.edges, truncated: msg.truncated, limit: msg.limit };
         populateGroupBy();
         draw();
       }
@@ -385,7 +491,7 @@ export function attachGraph(
     void webview.postMessage({ type: "loading" });
     try {
       const g = await client.graph(graphLimit);
-      void webview.postMessage({ type: "graph", nodes: g.nodes, edges: g.edges });
+      void webview.postMessage({ type: "graph", nodes: g.nodes, edges: g.edges, truncated: g.truncated ?? [], limit: g.limit });
     } catch (e: any) {
       void webview.postMessage({ type: "error", message: e?.message ?? String(e) });
     }

@@ -35,6 +35,9 @@ export interface TableResult extends QueryResult {
 export interface GraphResult {
   nodes: Array<{ data: Record<string, any> }>;
   edges: Array<{ data: Record<string, any> }>;
+  /** Tables whose row count reached the limit (graph shows only a sample). */
+  truncated?: string[];
+  limit?: number;
 }
 
 interface Pending {

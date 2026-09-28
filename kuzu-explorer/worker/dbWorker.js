@@ -371,6 +371,8 @@ const methods = {
     const nodes = [];
     const edges = [];
     const nodeIds = new Set();
+    // Tables whose rows hit the limit, so the graph is only a sample of them.
+    const truncated = [];
 
     // Assign each node table a distinct color, by order.
     const typeColors = {};
@@ -380,6 +382,7 @@ const methods = {
 
     for (const nt of nodeTables) {
       const res = await runQuery(`MATCH (n:\`${nt}\`) RETURN n LIMIT ${lim}`);
+      if (res.rows.length >= lim) truncated.push(nt);
       for (const r of res.rows) {
         const n = r.n;
         const idStr = formatId(n._id);
@@ -402,6 +405,7 @@ const methods = {
 
     for (const rt of relTables) {
       const res = await runQuery(`MATCH (a)-[r:\`${rt}\`]->(b) RETURN r LIMIT ${lim}`);
+      if (res.rows.length >= lim) truncated.push(rt);
       for (const row of res.rows) {
         const r = row.r;
         const src = formatId(r._src);
@@ -416,7 +420,7 @@ const methods = {
       }
     }
 
-    return { nodes, edges };
+    return { nodes, edges, truncated, limit: lim };
   },
 };
 

@@ -60,7 +60,7 @@ Connects **read-only** so it never holds a write lock. If the database is alread
 | `kuzuExplorer.nodePath` | `node` | Node.js executable used to run the database worker |
 | `kuzuExplorer.defaultReadOnly` | `true` | Connect read-only by default |
 | `kuzuExplorer.rowLimit` | `100` | Max rows when browsing a table |
-| `kuzuExplorer.graphLimit` | `500` | Max nodes/edges per table in the graph view |
+| `kuzuExplorer.graphLimit` | `2000` | Max nodes/edges per table in the graph view |
 
 ---
 
