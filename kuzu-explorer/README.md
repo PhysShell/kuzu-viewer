@@ -81,6 +81,9 @@ Connects **read-only** so it never holds a write lock. If the database is alread
 
 ## 📝 Release notes
 
+### 0.2.1
+- Smaller package: unused dependencies are no longer shipped (571 → 40 files), so the extension installs and loads faster.
+
 ### 0.2.0
 - LadybugDB support: both engines are bundled and selected per database file.
 - Graph view: fixed the graph rendering blank or squashed in narrow editors; the details pane is now resizable and can be hidden; new **Fit** button.
