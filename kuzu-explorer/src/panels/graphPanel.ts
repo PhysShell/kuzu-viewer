@@ -37,7 +37,7 @@ export class GraphPanel {
     extensionUri: vscode.Uri
   ) {
     this.panel = panel;
-    const graphLimit = vscode.workspace.getConfiguration("kuzuExplorer").get<number>("graphLimit", 500);
+    const graphLimit = vscode.workspace.getConfiguration("kuzuExplorer").get<number>("graphLimit", 2000);
     this.panel.webview.html = graphHtml(this.panel.webview, extensionUri);
     this.disposables.push(attachGraph(this.panel.webview, client, graphLimit));
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
