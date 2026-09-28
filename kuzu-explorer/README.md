@@ -81,6 +81,13 @@ Connects **read-only** so it never holds a write lock. If the database is alread
 
 ## 📝 Release notes
 
+### 0.2.0
+- LadybugDB support: both engines are bundled and selected per database file.
+- Graph view: fixed the graph rendering blank or squashed in narrow editors; the details pane is now resizable and can be hidden; new **Fit** button.
+- Graph view: **Group by** a relationship (e.g. `HAS_COLUMN`) to circle each table with its columns, labeled by `db_id`, in a compact non-overlapping layout.
+- `kuzuExplorer.graphLimit` default raised to 2000, with a warning when tables are truncated.
+- Intel macOS (darwin-x64) builds are no longer published.
+
 ### 0.1.0
 Initial release: schema tree, table browsing, Cypher query panel, interactive graph view, open-as-database, and read-only snapshot fallback.
 
