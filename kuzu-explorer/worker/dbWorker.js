@@ -201,6 +201,21 @@ function stripInternal(obj) {
   return out;
 }
 
+// Cytoscape treats these data keys structurally (a stray `parent` makes it a
+// compound child, `source`/`target` rewire edges), so user properties with
+// these names are renamed with a db_ prefix before being sent to the graph.
+const CY_RESERVED = ["parent", "source", "target"];
+function graphProps(obj) {
+  const out = stripInternal(obj);
+  for (const k of CY_RESERVED) {
+    if (k in out) {
+      out[`db_${k}`] = out[k];
+      delete out[k];
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // RPC methods
 // ---------------------------------------------------------------------------
@@ -371,7 +386,7 @@ const methods = {
         if (idStr && !nodeIds.has(idStr)) {
           nodeIds.add(idStr);
           const type = n._label || nt;
-          const props = stripInternal(n);
+          const props = graphProps(n);
           nodes.push({
             data: {
               id: idStr,
@@ -395,7 +410,7 @@ const methods = {
         // Cytoscape rejects edges whose endpoints are not in the node set.
         if (src && dst && nodeIds.has(src) && nodeIds.has(dst)) {
           edges.push({
-            data: { id: idStr, source: src, target: dst, label: r._label || rt, ...stripInternal(r) },
+            data: { ...graphProps(r), id: idStr, source: src, target: dst, label: r._label || rt },
           });
         }
       }
