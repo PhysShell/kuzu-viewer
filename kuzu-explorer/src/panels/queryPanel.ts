@@ -80,6 +80,7 @@ export class QueryPanel {
     if (!trimmed) {
       return;
     }
+    this.lastGraph = null;
     this.post({ type: "setQuery", query: trimmed });
     this.post({ type: "loading" });
     try {
