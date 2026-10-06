@@ -101,6 +101,11 @@
         "icon": "$(type-hierarchy)"
       },
       {
+        "command": "kuzuExplorer.visualizeResult",
+        "title": "Kuzu: Visualize Last Query Result",
+        "icon": "$(type-hierarchy)"
+      },
+      {
         "command": "kuzuExplorer.openTable",
         "title": "Kuzu: Open Table"
       },
@@ -182,6 +187,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test test/graphExtract.test.js test/dbWorker.test.js",
     "package": "vsce package"
   },
   "dependencies": {
