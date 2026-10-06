@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { KuzuClient } from "./kuzuClient";
+import { GraphResult, KuzuClient } from "./kuzuClient";
 
 export function getNonce(): string {
   let text = "";
@@ -92,6 +92,7 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
     var splitterEl = document.getElementById('splitter');
     var groupSel = document.getElementById('groupBy');
     var toggleBtn = document.getElementById('toggleSide');
+    var reloadBtn = document.getElementById('reload');
     var cy = null;
     var raw = null;           // last graph payload from the extension
     var layoutPending = false; // layout deferred until the container has a real size
@@ -409,8 +410,17 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
       var groupBy = groupSel.value;
       var els = buildElements(groupBy);
       var clusterCount = els.nodes.length - raw.nodes.length;
-      statusEl.textContent = raw.nodes.length + ' nodes, ' + raw.edges.length + ' edges' +
+      statusEl.textContent = (raw.pinned ? 'Query result: ' : '') +
+        raw.nodes.length + ' nodes, ' + raw.edges.length + ' edges' +
         (clusterCount ? ', ' + clusterCount + ' groups' : '');
+      if (raw.skipped) {
+        var skipped = document.createElement('div');
+        skipped.className = 'error';
+        skipped.textContent = raw.skipped + ' relationship' + (raw.skipped === 1 ? '' : 's') +
+          ' returned by the query were not drawn because their endpoints are not in the result — ' +
+          'add the connected nodes to your RETURN clause.';
+        statusEl.appendChild(skipped);
+      }
       if (raw.truncated && raw.truncated.length) {
         var warn = document.createElement('div');
         warn.className = 'error';
@@ -462,7 +472,14 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
       if (msg.type === 'loading') { statusEl.textContent = 'Loading…'; }
       else if (msg.type === 'graph') {
         if (typeof cytoscape === 'undefined') { statusEl.textContent = 'cytoscape failed to load'; return; }
-        raw = { nodes: msg.nodes, edges: msg.edges, truncated: msg.truncated, limit: msg.limit };
+        raw = {
+          nodes: msg.nodes || [], edges: msg.edges || [],
+          truncated: msg.truncated, limit: msg.limit,
+          pinned: !!msg.pinned, skipped: msg.skippedEdges || 0
+        };
+        // A pinned payload is a query result: reloading the database would
+        // replace it, so the button is hidden rather than misleading.
+        reloadBtn.style.display = raw.pinned ? 'none' : '';
         populateGroupBy();
         draw();
       }
@@ -478,6 +495,19 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
 </html>`;
 }
 
+/** Build the `graph` message the webview renders. */
+export function graphMessage(graph: GraphResult, pinned = false): Record<string, any> {
+  return {
+    type: "graph",
+    nodes: graph.nodes,
+    edges: graph.edges,
+    truncated: graph.truncated ?? [],
+    limit: graph.limit,
+    skippedEdges: graph.skippedEdges ?? 0,
+    pinned,
+  };
+}
+
 /**
  * Wire a webview that uses graphHtml() to load graph data from the client.
  * Returns a Disposable for the message subscription.
@@ -487,18 +517,46 @@ export function attachGraph(
   client: KuzuClient,
   graphLimit: number
 ): vscode.Disposable {
+  // A load started before disposal must not paint over whatever replaced it
+  // (e.g. a pinned query result shown while a database load was in flight).
+  let disposed = false;
   const load = async () => {
     void webview.postMessage({ type: "loading" });
     try {
       const g = await client.graph(graphLimit);
-      void webview.postMessage({ type: "graph", nodes: g.nodes, edges: g.edges, truncated: g.truncated ?? [], limit: g.limit });
+      if (disposed) {
+        return;
+      }
+      void webview.postMessage(graphMessage(g));
     } catch (e: any) {
-      void webview.postMessage({ type: "error", message: e?.message ?? String(e) });
+      if (!disposed) {
+        void webview.postMessage({ type: "error", message: e?.message ?? String(e) });
+      }
     }
   };
-  return webview.onDidReceiveMessage(async (msg) => {
+  const sub = webview.onDidReceiveMessage(async (msg) => {
     if (msg?.type === "ready" || msg?.type === "reload") {
       await load();
+    }
+  });
+  return new vscode.Disposable(() => {
+    disposed = true;
+    sub.dispose();
+  });
+}
+
+/**
+ * Wire a webview that uses graphHtml() to a fixed payload — the subgraph of a
+ * query result — instead of the whole database. Re-rendered on `ready` so it
+ * survives the webview being hidden and restored.
+ */
+export function attachStaticGraph(
+  webview: vscode.Webview,
+  graph: GraphResult
+): vscode.Disposable {
+  return webview.onDidReceiveMessage((msg) => {
+    if (msg?.type === "ready" || msg?.type === "reload") {
+      void webview.postMessage(graphMessage(graph, true));
     }
   });
 }
