@@ -55,13 +55,34 @@ function startWorker() {
         proc.stdin.write(JSON.stringify({ id, method, params }) + "\n");
       });
     },
-    stop() {
+    async stop() {
+      if (proc.exitCode !== null || proc.signalCode !== null) {
+        return;
+      }
       try {
         proc.stdin.end();
       } catch {
         /* ignore */
       }
-      proc.kill();
+      await new Promise((resolve) => {
+        const done = () => {
+          clearTimeout(forceTimer);
+          resolve();
+        };
+        proc.once("exit", done);
+        const forceTimer = setTimeout(() => {
+          try {
+            proc.kill("SIGKILL");
+          } catch {
+            done();
+          }
+        }, 2000);
+        try {
+          proc.kill();
+        } catch {
+          done();
+        }
+      });
     },
   };
 }
@@ -72,9 +93,14 @@ test(
   async (t) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kuzu-explorer-test-"));
     let worker;
-    t.after(() => {
-      if (worker) worker.stop();
-      fs.rmSync(dir, { recursive: true, force: true });
+    t.after(async () => {
+      if (worker) await worker.stop();
+      fs.rmSync(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     });
 
     const dbPath = createMovieDb(path.join(dir, "movies.kuzu"));
@@ -164,9 +190,14 @@ test(
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kuzu-explorer-test-"));
     const dbPath = path.join(dir, "code.kuzu");
     let worker;
-    t.after(() => {
-      if (worker) worker.stop();
-      fs.rmSync(dir, { recursive: true, force: true });
+    t.after(async () => {
+      if (worker) await worker.stop();
+      fs.rmSync(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     });
 
     // A source-code-shaped schema: the point is that the query result is a tiny
