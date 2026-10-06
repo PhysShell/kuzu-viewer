@@ -1,30 +1,23 @@
-name: Publish VS Code Extension
+name: Build Windows VSIX
 
-# Build a platform-specific .vsix on each OS and publish to the VS Code
-# Marketplace. Pushing a tag like v0.1.0 publishes; manual runs only build.
 on:
   push:
+    branches:
+      - main
     tags:
-      - "v*.*.*"
+      - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  publish:
-    name: ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+  build:
+    runs-on: windows-latest
     defaults:
       run:
         working-directory: kuzu-explorer
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x64
-          - os: windows-latest
-            target: win32-x64
-          - os: macos-14
-            target: darwin-arm64
+
     steps:
       - uses: actions/checkout@v5
 
@@ -37,22 +30,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Compile
-        run: npm run compile
+      - name: Compile and test
+        run: npm test
 
-      - name: Package (.vsix for ${{ matrix.target }})
-        run: npx @vscode/vsce package --target ${{ matrix.target }} -o kuzu-explorer-${{ matrix.target }}.vsix
+      - name: Package Windows VSIX
+        run: npx @vscode/vsce package --target win32-x64 -o kuzu-explorer-win32-x64.vsix
 
-      - name: Upload .vsix artifact
+      - name: Upload workflow artifact
         uses: actions/upload-artifact@v6
         with:
-          name: kuzu-explorer-${{ matrix.target }}
-          path: kuzu-explorer/kuzu-explorer-${{ matrix.target }}.vsix
+          name: kuzu-explorer-win32-x64
+          path: kuzu-explorer/kuzu-explorer-win32-x64.vsix
 
-      # Only publish on a version tag push, not on manual/dispatch builds.
-      - name: Publish to Marketplace
-        if: startsWith(github.ref, 'refs/tags/v')
-        # The target is baked into the .vsix; vsce rejects --target with --packagePath.
-        run: npx @vscode/vsce publish --packagePath kuzu-explorer-${{ matrix.target }}.vsix
+      - name: Publish GitHub Release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME .\kuzu-explorer-win32-x64.vsix --clobber
+          } else {
+            gh release create $env:GITHUB_REF_NAME .\kuzu-explorer-win32-x64.vsix --generate-notes --title $env:GITHUB_REF_NAME
+          }
