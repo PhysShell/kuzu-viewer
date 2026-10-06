@@ -23,6 +23,15 @@ const os = require("os");
 const path = require("path");
 const readline = require("readline");
 
+const {
+  stripInternal,
+  formatId,
+  colorMapFor,
+  nodeEntry,
+  edgeEntry,
+  graphFromRows,
+} = require("./graphExtract");
+
 // Two engines, chosen PER FILE by its storage-format magic header:
 //   "LBUG"  -> LadybugDB (@ladybugdb/core), the maintained successor
 //   "KUZU"  -> Kuzu 0.11.x, for databases written by the original engine
@@ -129,34 +138,6 @@ function isWriteQuery(query) {
   return tokens.some((t) => WRITE_KEYWORDS.has(t));
 }
 
-function formatId(idObj) {
-  if (!idObj) return null;
-  return `${idObj.table}_${idObj.offset}`;
-}
-
-// Pick a human-friendly label for a graph node from its properties, falling
-// back to the table/label name when no obvious name-like property exists.
-const LABEL_KEYS = ["name", "title", "label", "displayName", "key", "id", "db_id"];
-function pickLabel(props, fallback) {
-  for (const k of LABEL_KEYS) {
-    const v = props[k];
-    if (v !== undefined && v !== null && String(v).trim() !== "") {
-      return String(v);
-    }
-  }
-  for (const [k, v] of Object.entries(props)) {
-    if (typeof v === "string" && v.trim() !== "") return v;
-    if (typeof v === "number" || typeof v === "bigint") return String(v);
-  }
-  return fallback;
-}
-
-// Color palette; node types are assigned distinct colors by table order.
-const TYPE_PALETTE = [
-  "#4f8cc9", "#e0a458", "#6cbf84", "#c96f9b",
-  "#9b7fd1", "#d1786f", "#5bb3c9", "#b3a14f",
-];
-
 async function releaseDb() {
   const { conn, db, tempDir } = state;
   if (conn) {
@@ -239,35 +220,6 @@ async function runQuery(statement) {
   } finally {
     try { res.close(); } catch (_) { /* ignore */ }
   }
-}
-
-function stripInternal(obj) {
-  const out = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (k.startsWith("_")) continue;
-    if (v === null || v === undefined) continue;
-    out[k] = v;
-  }
-  if ("id" in out) {
-    out.db_id = out.id;
-    delete out.id;
-  }
-  return out;
-}
-
-// Cytoscape treats these data keys structurally (a stray `parent` makes it a
-// compound child, `source`/`target` rewire edges), so user properties with
-// these names are renamed with a db_ prefix before being sent to the graph.
-const CY_RESERVED = ["parent", "source", "target"];
-function graphProps(obj) {
-  const out = stripInternal(obj);
-  for (const k of CY_RESERVED) {
-    if (k in out) {
-      out[`db_${k}`] = out[k];
-      delete out[k];
-    }
-  }
-  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,7 +367,7 @@ const methods = {
       );
     }
     const { columns, rows } = await runQuery(query);
-    return { columns, rows };
+    return { columns, rows, graph: graphFromRows(rows) };
   },
 
   async graph({ limit = 500 } = {}) {
@@ -435,11 +387,8 @@ const methods = {
     // Tables whose rows hit the limit, so the graph is only a sample of them.
     const truncated = [];
 
-    // Assign each node table a distinct color, by order.
-    const typeColors = {};
-    nodeTables.forEach((t, i) => {
-      typeColors[t] = TYPE_PALETTE[i % TYPE_PALETTE.length];
-    });
+    // Keep whole-database graph colors compatible with query-result graphs.
+    const typeColors = colorMapFor(nodeTables);
 
     for (const nt of nodeTables) {
       const res = await runQuery(`MATCH (n:\`${nt}\`) RETURN n LIMIT ${lim}`);
@@ -449,17 +398,7 @@ const methods = {
         const idStr = formatId(n._id);
         if (idStr && !nodeIds.has(idStr)) {
           nodeIds.add(idStr);
-          const type = n._label || nt;
-          const props = graphProps(n);
-          nodes.push({
-            data: {
-              id: idStr,
-              ...props,
-              type,
-              color: typeColors[type] || TYPE_PALETTE[0],
-              label: pickLabel(props, type),
-            },
-          });
+          nodes.push(nodeEntry(n, nt, typeColors));
         }
       }
     }
@@ -474,9 +413,7 @@ const methods = {
         const idStr = formatId(r._id);
         // Cytoscape rejects edges whose endpoints are not in the node set.
         if (src && dst && nodeIds.has(src) && nodeIds.has(dst)) {
-          edges.push({
-            data: { ...graphProps(r), id: idStr, source: src, target: dst, label: r._label || rt },
-          });
+          edges.push(edgeEntry(r, rt));
         }
       }
     }
