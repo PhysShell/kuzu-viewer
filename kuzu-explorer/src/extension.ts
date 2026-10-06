@@ -132,6 +132,18 @@ export function activate(context: vscode.ExtensionContext): void {
       GraphPanel.show(client, context.extensionUri);
     }),
 
+    vscode.commands.registerCommand("kuzuExplorer.visualizeResult", () => {
+      if (!client.isConnected) {
+        vscode.window.showWarningMessage("Kuzu: connect to a database first.");
+        return;
+      }
+      if (!QueryPanel.visualizeLastResult()) {
+        vscode.window.showInformationMessage(
+          "Kuzu: run a query that returns nodes or relationships first."
+        );
+      }
+    }),
+
     vscode.commands.registerCommand("kuzuExplorer.openDatabaseFile", async (uri?: vscode.Uri) => {
       const target = uri ?? (await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: true, canSelectMany: false }))?.[0];
       if (!target) {

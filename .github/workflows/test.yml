@@ -1,0 +1,37 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: kuzu-explorer
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # 22 for the test runner's glob support (node --test "test/*.test.js").
+          node-version: 22
+          cache: npm
+          cache-dependency-path: kuzu-explorer/package-lock.json
+
+      # install.js fetches the prebuilt Kuzu binary for this platform, which the
+      # worker integration test needs. If it is unavailable the test skips.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test (compiles first via pretest)
+        run: npm test

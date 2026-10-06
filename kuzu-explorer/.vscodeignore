@@ -135,3 +135,6 @@ node_modules/y18n/**
 node_modules/yallist/**
 node_modules/yargs/**
 node_modules/yargs-parser/**
+
+# tests are not part of the packaged extension
+test/**

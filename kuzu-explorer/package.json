@@ -101,6 +101,11 @@
         "icon": "$(type-hierarchy)"
       },
       {
+        "command": "kuzuExplorer.visualizeResult",
+        "title": "Kuzu: Visualize Last Query Result",
+        "icon": "$(type-hierarchy)"
+      },
+      {
         "command": "kuzuExplorer.openTable",
         "title": "Kuzu: Open Table"
       },
@@ -182,7 +187,9 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package"
+    "package": "vsce package",
+    "pretest": "npm run compile",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
     "cytoscape": "^3.30.0",

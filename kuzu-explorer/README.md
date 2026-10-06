@@ -17,6 +17,18 @@ Click a table to load its rows into a clean, sortable results grid — no query 
 ### ⚡ Run Cypher
 A built-in query panel lets you write and execute Cypher (**Ctrl/Cmd + Enter**) and see results as a table. Write queries are blocked automatically in read-only mode.
 
+### 🎯 Visualize a query result
+Every query result is inspected for the nodes, relationships and paths it returned, so the results grid gets a **Visualize result (N nodes, M edges)** button. It draws *only that subgraph* in the graph view — no rescan of the database, no unrelated tables:
+
+```cypher
+MATCH (s:Symbol)-[hd:HAS_DECLARATION]->(d:SourceDeclaration)
+      -[di:DECLARED_IN]->(f:SourceFile)
+WHERE s.kind = 'method' AND s.name = 'Save'
+RETURN s, hd, d, di, f LIMIT 30
+```
+
+The button is disabled (with the reason) when a query returns no graph entities, e.g. `RETURN s.name, count(*)`. Relationships whose endpoints are not in the result cannot be drawn and are counted in the button's tooltip instead.
+
 ### 🕸️ Interactive graph view
 Visualize your data as a graph powered by [Cytoscape](https://js.cytoscape.org/). Nodes are labeled by a real name property and colored by table type; click any node or edge to inspect its properties. Use **Group by** to circle each node together with the nodes it owns through a relationship (e.g. a table and its columns via `HAS_COLUMN`), labeled by `db_id`. The details pane can be resized by dragging its edge, or hidden.
 
@@ -46,7 +58,8 @@ Connects **read-only** so it never holds a write lock. If the database is alread
 | --- | --- |
 | **Kuzu: Connect to Database** | Connect to a database by path |
 | **Kuzu: Run Cypher Query** | Open the query panel |
-| **Kuzu: Show Graph** | Open the graph visualization |
+| **Kuzu: Show Graph** | Open the graph visualization of the whole database |
+| **Kuzu: Visualize Last Query Result** | Draw the last query result's subgraph in the graph view |
 | **Kuzu: Refresh Schema** | Reload the schema tree |
 | **Kuzu: Disconnect** | Close the current connection |
 | **Open as Kuzu Database** | Explorer right-click action |
@@ -75,11 +88,28 @@ Connects **read-only** so it never holds a write lock. If the database is alread
 ## ⚠️ Known limitations
 
 - A published build includes Kuzu's native binary for **one platform/architecture** only.
-- The graph view samples up to `graphLimit` nodes/edges **per table**; very large graphs are not rendered in full.
+- The graph view samples up to `graphLimit` nodes/edges **per table**; very large graphs are not rendered in full. For a focused view, run a query and use **Visualize result** instead.
+- **Visualize result** draws only what a query returned: a relationship is shown only when both of its endpoints are in the result, so `MATCH ()-[r]->() RETURN r` draws nothing on its own.
+
+---
+
+## 🧪 Development
+
+```bash
+cd kuzu-explorer
+npm install     # also fetches Kuzu's prebuilt native binary
+npm run compile # tsc -> out/
+npm test        # compiles, then runs the unit + worker/webview integration tests
+```
+
+`npm test` runs the real database worker against a temporary Kuzu database, and drives the webview scripts in a minimal DOM, so the query → extract → render path is covered end to end. Tests skip the Kuzu parts automatically if the native addon is not installed.
 
 ---
 
 ## 📝 Release notes
+
+### Unreleased
+- **Visualize Cypher query results in the graph view.** The Cypher panel now extracts the nodes, relationships and paths a query returned and offers a **Visualize result (N nodes, M edges)** action that renders just that subgraph in the existing Cytoscape view — without rescanning the database. Works with `RETURN a, r, b`, `RETURN p` (paths), and nested `collect(...)` results; disabled with an explanation when a query returns only scalar values.
 
 ### 0.2.1
 - Smaller package: unused dependencies are no longer shipped (571 → 40 files), so the extension installs and loads faster.

@@ -26,6 +26,11 @@ export interface ConnectResult {
 export interface QueryResult {
   columns: string[];
   rows: any[];
+  /**
+   * Subgraph extracted from the entities the query returned (nodes,
+   * relationships and paths). Empty when the query returned only scalars.
+   */
+  graph?: GraphResult;
 }
 
 export interface TableResult extends QueryResult {
@@ -38,6 +43,8 @@ export interface GraphResult {
   /** Tables whose row count reached the limit (graph shows only a sample). */
   truncated?: string[];
   limit?: number;
+  /** Relationships left out because an endpoint is not part of this payload. */
+  skippedEdges?: number;
 }
 
 interface Pending {
