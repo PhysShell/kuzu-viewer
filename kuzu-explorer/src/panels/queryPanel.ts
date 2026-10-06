@@ -1,5 +1,12 @@
 import * as vscode from "vscode";
-import { KuzuClient } from "../kuzuClient";
+import { GraphResult, KuzuClient } from "../kuzuClient";
+import { GraphPanel } from "./graphPanel";
+
+interface GraphInfo {
+  nodes: number;
+  edges: number;
+  skipped: number;
+}
 
 function getNonce(): string {
   let text = "";
@@ -21,6 +28,7 @@ export class QueryPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
   private rowLimit: number;
+  private lastGraph: GraphResult | null = null;
 
   static show(client: KuzuClient, extensionUri: vscode.Uri): QueryPanel {
     const column = vscode.ViewColumn.Active;
@@ -38,10 +46,15 @@ export class QueryPanel {
     return QueryPanel.current;
   }
 
+  /** Visualize the current panel's last query result, if it is drawable. */
+  static visualizeLastResult(): boolean {
+    return !!QueryPanel.current?.visualizeResult();
+  }
+
   private constructor(
     panel: vscode.WebviewPanel,
     private readonly client: KuzuClient,
-    extensionUri: vscode.Uri
+    private readonly extensionUri: vscode.Uri
   ) {
     this.panel = panel;
     this.rowLimit = vscode.workspace.getConfiguration("kuzuExplorer").get<number>("rowLimit", 100);
@@ -53,6 +66,8 @@ export class QueryPanel {
       async (msg) => {
         if (msg?.type === "run") {
           await this.runQuery(String(msg.query ?? ""));
+        } else if (msg?.type === "visualize") {
+          this.visualizeResult();
         }
       },
       null,
@@ -69,14 +84,22 @@ export class QueryPanel {
     this.post({ type: "loading" });
     try {
       const res = await this.client.query(trimmed);
-      this.post({ type: "result", columns: res.columns, rows: res.rows });
+      this.lastGraph = res.graph ?? null;
+      this.post({
+        type: "result",
+        columns: res.columns,
+        rows: res.rows,
+        graph: infoOf(this.lastGraph),
+      });
     } catch (e: any) {
-      this.post({ type: "error", message: e?.message ?? String(e) });
+      this.lastGraph = null;
+      this.post({ type: "error", message: e?.message ?? String(e), graph: null });
     }
   }
 
   async showTable(name: string): Promise<void> {
     this.panel.reveal(vscode.ViewColumn.Active);
+    this.lastGraph = null;
     this.post({ type: "loading" });
     try {
       const res = await this.client.table(name, this.rowLimit);
@@ -87,10 +110,28 @@ export class QueryPanel {
         columns: res.columns,
         rows: res.rows,
         title: `${name} (${res.kind}) — up to ${this.rowLimit} rows`,
+        graph: null,
       });
     } catch (e: any) {
-      this.post({ type: "error", message: e?.message ?? String(e) });
+      this.lastGraph = null;
+      this.post({ type: "error", message: e?.message ?? String(e), graph: null });
     }
+  }
+
+  /** Open the shared graph panel on only the entities returned by this query. */
+  visualizeResult(): boolean {
+    if (!isDrawable(this.lastGraph)) {
+      return false;
+    }
+
+    const graph = this.lastGraph!;
+    GraphPanel.showResult(
+      graph,
+      this.client,
+      this.extensionUri,
+      `Kuzu Graph — result (${graph.nodes.length} nodes, ${graph.edges.length} edges)`
+    );
+    return true;
   }
 
   private post(message: any): void {
@@ -132,12 +173,19 @@ export class QueryPanel {
     background: var(--vscode-input-background); color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border, transparent); border-radius: 4px; padding: 8px;
   }
-  .row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
   button {
     background: var(--vscode-button-background); color: var(--vscode-button-foreground);
     border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;
   }
   button:hover { background: var(--vscode-button-hoverBackground); }
+  button.secondary {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+  }
+  button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button:disabled { opacity: 0.55; cursor: default; }
+  button:disabled:hover { background: var(--vscode-button-secondaryBackground); }
   .hint { color: var(--vscode-descriptionForeground); font-size: 12px; }
   .status { padding: 6px 10px; font-size: 12px; color: var(--vscode-descriptionForeground); }
   .error { color: var(--vscode-errorForeground); white-space: pre-wrap; padding: 10px; }
@@ -157,6 +205,7 @@ export class QueryPanel {
     <textarea id="q" placeholder="MATCH (n) RETURN n LIMIT 25;"></textarea>
     <div class="row">
       <button id="run">Run (Ctrl/Cmd+Enter)</button>
+      <button id="viz" class="secondary" disabled>Visualize result</button>
       <span class="hint">Read-only connections reject write queries.</span>
     </div>
   </div>
@@ -167,14 +216,37 @@ export class QueryPanel {
     var qEl = document.getElementById('q');
     var outEl = document.getElementById('out');
     var statusEl = document.getElementById('status');
+    var vizEl = document.getElementById('viz');
 
     function run() {
       vscodeApi.postMessage({ type: 'run', query: qEl.value });
     }
     document.getElementById('run').addEventListener('click', run);
+    vizEl.addEventListener('click', function () {
+      vscodeApi.postMessage({ type: 'visualize' });
+    });
     qEl.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); }
     });
+
+    function setViz(info) {
+      if (!info || (!info.nodes && !info.edges)) {
+        vizEl.disabled = true;
+        vizEl.textContent = 'Visualize result';
+        vizEl.title = info && info.skipped
+          ? 'Cannot draw: ' + info.skipped + ' relationship' +
+            (info.skipped === 1 ? '' : 's') +
+            ' were returned without both endpoint nodes.'
+          : 'Disabled: return nodes, relationships with endpoints, or paths to draw a graph.';
+        return;
+      }
+
+      vizEl.disabled = false;
+      vizEl.textContent = 'Visualize result (' + info.nodes + ' node' +
+        (info.nodes === 1 ? '' : 's') + ', ' + info.edges + ' edge' +
+        (info.edges === 1 ? '' : 's') + ')';
+      vizEl.title = 'Draw only the graph entities returned by this query.';
+    }
 
     function fmt(v) {
       if (v === null || v === undefined) return '';
@@ -227,17 +299,42 @@ export class QueryPanel {
     window.addEventListener('message', function (event) {
       var msg = event.data;
       if (msg.type === 'setQuery') { qEl.value = msg.query; }
-      else if (msg.type === 'loading') { statusEl.textContent = 'Running…'; outEl.innerHTML = ''; }
-      else if (msg.type === 'result') { render(msg.columns, msg.rows, msg.title); }
+      else if (msg.type === 'loading') {
+        statusEl.textContent = 'Running…';
+        outEl.innerHTML = '';
+        setViz(null);
+      }
+      else if (msg.type === 'result') {
+        setViz(msg.graph);
+        render(msg.columns, msg.rows, msg.title);
+      }
       else if (msg.type === 'error') {
+        setViz(null);
         statusEl.textContent = '';
         outEl.innerHTML = '';
         var d = document.createElement('div'); d.className = 'error'; d.textContent = msg.message;
         outEl.appendChild(d);
       }
     });
+    setViz(null);
   </script>
 </body>
 </html>`;
   }
+}
+
+
+function isDrawable(graph: GraphResult | null): graph is GraphResult {
+  return !!graph && (graph.nodes.length > 0 || graph.edges.length > 0);
+}
+
+function infoOf(graph: GraphResult | null): GraphInfo | null {
+  if (!graph) {
+    return null;
+  }
+  return {
+    nodes: graph.nodes.length,
+    edges: graph.edges.length,
+    skipped: graph.skippedEdges ?? 0,
+  };
 }
