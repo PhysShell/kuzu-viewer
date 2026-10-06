@@ -2,7 +2,7 @@
   "name": "kuzu-explorer",
   "displayName": "Kuzu Explorer",
   "description": "Browse Kuzu graph databases inside VS Code: schema tree, table data, Cypher queries and a graph view.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "gaintlabs",
   "license": "MIT",
   "repository": {
@@ -189,7 +189,7 @@
     "watch": "tsc -watch -p ./",
     "package": "vsce package",
     "pretest": "npm run compile",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test test/dbWorker.test.js test/extension.test.js test/graphExtract.test.js test/webview.test.js"
   },
   "dependencies": {
     "cytoscape": "^3.30.0",
