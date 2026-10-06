@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { KuzuClient } from "./kuzuClient";
+import { GraphResult, KuzuClient } from "./kuzuClient";
 
 export function getNonce(): string {
   let text = "";
@@ -409,8 +409,17 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
       var groupBy = groupSel.value;
       var els = buildElements(groupBy);
       var clusterCount = els.nodes.length - raw.nodes.length;
-      statusEl.textContent = raw.nodes.length + ' nodes, ' + raw.edges.length + ' edges' +
+      var prefix = raw.pinned ? 'Query result: ' : '';
+      statusEl.textContent = prefix + raw.nodes.length + ' nodes, ' + raw.edges.length + ' edges' +
         (clusterCount ? ', ' + clusterCount + ' groups' : '');
+      if (raw.skippedEdges) {
+        var omitted = document.createElement('div');
+        omitted.className = 'k';
+        omitted.textContent = raw.skippedEdges + ' relationship' +
+          (raw.skippedEdges === 1 ? '' : 's') +
+          ' not drawn because one or both endpoints were not returned by the query.';
+        statusEl.appendChild(omitted);
+      }
       if (raw.truncated && raw.truncated.length) {
         var warn = document.createElement('div');
         warn.className = 'error';
@@ -462,7 +471,14 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
       if (msg.type === 'loading') { statusEl.textContent = 'Loading…'; }
       else if (msg.type === 'graph') {
         if (typeof cytoscape === 'undefined') { statusEl.textContent = 'cytoscape failed to load'; return; }
-        raw = { nodes: msg.nodes, edges: msg.edges, truncated: msg.truncated, limit: msg.limit };
+        raw = {
+          nodes: msg.nodes,
+          edges: msg.edges,
+          truncated: msg.truncated,
+          limit: msg.limit,
+          skippedEdges: msg.skippedEdges || 0,
+          pinned: !!msg.pinned
+        };
         populateGroupBy();
         draw();
       }
@@ -478,27 +494,70 @@ export function graphHtml(webview: vscode.Webview, extensionUri: vscode.Uri): st
 </html>`;
 }
 
+/** Build the graph message consumed by the Cytoscape webview. */
+export function graphMessage(graph: GraphResult, pinned = false): Record<string, any> {
+  return {
+    type: "graph",
+    nodes: graph.nodes,
+    edges: graph.edges,
+    truncated: graph.truncated ?? [],
+    limit: graph.limit,
+    skippedEdges: graph.skippedEdges ?? 0,
+    pinned,
+  };
+}
+
 /**
- * Wire a webview that uses graphHtml() to load graph data from the client.
- * Returns a Disposable for the message subscription.
+ * Wire a webview to the sampled whole-database graph.
+ *
+ * The disposed guard matters when the panel is switched to a pinned query
+ * result while an expensive whole-database graph() call is still in flight.
  */
 export function attachGraph(
   webview: vscode.Webview,
   client: KuzuClient,
   graphLimit: number
 ): vscode.Disposable {
+  let disposed = false;
+
   const load = async () => {
+    if (disposed) return;
     void webview.postMessage({ type: "loading" });
     try {
-      const g = await client.graph(graphLimit);
-      void webview.postMessage({ type: "graph", nodes: g.nodes, edges: g.edges, truncated: g.truncated ?? [], limit: g.limit });
+      const graph = await client.graph(graphLimit);
+      if (!disposed) {
+        void webview.postMessage(graphMessage(graph));
+      }
     } catch (e: any) {
-      void webview.postMessage({ type: "error", message: e?.message ?? String(e) });
+      if (!disposed) {
+        void webview.postMessage({ type: "error", message: e?.message ?? String(e) });
+      }
     }
   };
-  return webview.onDidReceiveMessage(async (msg) => {
+
+  const subscription = webview.onDidReceiveMessage(async (msg) => {
     if (msg?.type === "ready" || msg?.type === "reload") {
       await load();
+    }
+  });
+
+  return new vscode.Disposable(() => {
+    disposed = true;
+    subscription.dispose();
+  });
+}
+
+/**
+ * Wire the graph webview to a fixed query-result payload.
+ * Reload means redraw the same payload; it never rescans the database.
+ */
+export function attachStaticGraph(
+  webview: vscode.Webview,
+  graph: GraphResult
+): vscode.Disposable {
+  return webview.onDidReceiveMessage((msg) => {
+    if (msg?.type === "ready" || msg?.type === "reload") {
+      void webview.postMessage(graphMessage(graph, true));
     }
   });
 }
