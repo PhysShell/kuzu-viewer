@@ -108,8 +108,10 @@ npm test        # compiles, then runs the unit + worker/webview integration test
 
 ## 📝 Release notes
 
-### Unreleased
+### 0.2.2
 - **Visualize Cypher query results in the graph view.** The Cypher panel now extracts the nodes, relationships and paths a query returned and offers a **Visualize result (N nodes, M edges)** action that renders just that subgraph in the existing Cytoscape view — without rescanning the database. Works with `RETURN a, r, b`, `RETURN p` (paths), and nested `collect(...)` results; disabled with an explanation when a query returns only scalar values.
+
+- Windows `.vsix` builds are attached to CI runs; version tags also publish the artifact to a GitHub Release.
 
 ### 0.2.1
 - Smaller package: unused dependencies are no longer shipped (571 → 40 files), so the extension installs and loads faster.
