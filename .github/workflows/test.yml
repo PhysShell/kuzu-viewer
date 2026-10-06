@@ -23,8 +23,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          # 22 for the test runner's glob support (node --test "test/*.test.js").
-          node-version: 22
+          node-version: 20
           cache: npm
           cache-dependency-path: kuzu-explorer/package-lock.json
 
