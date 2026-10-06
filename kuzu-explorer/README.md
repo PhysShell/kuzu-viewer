@@ -17,6 +17,9 @@ Click a table to load its rows into a clean, sortable results grid — no query 
 ### ⚡ Run Cypher
 A built-in query panel lets you write and execute Cypher (**Ctrl/Cmd + Enter**) and see results as a table. Write queries are blocked automatically in read-only mode.
 
+### 🔎 Visualize query results
+When a Cypher query returns nodes, relationships or paths, **Visualize result** opens only that returned subgraph in the existing Cytoscape graph view. This avoids scanning or rendering the whole database for focused investigations.
+
 ### 🕸️ Interactive graph view
 Visualize your data as a graph powered by [Cytoscape](https://js.cytoscape.org/). Nodes are labeled by a real name property and colored by table type; click any node or edge to inspect its properties. Use **Group by** to circle each node together with the nodes it owns through a relationship (e.g. a table and its columns via `HAS_COLUMN`), labeled by `db_id`. The details pane can be resized by dragging its edge, or hidden.
 
@@ -80,6 +83,11 @@ Connects **read-only** so it never holds a write lock. If the database is alread
 ---
 
 ## 📝 Release notes
+
+### 0.2.2
+- Cypher results that contain graph entities can be visualized directly as a focused subgraph.
+- Query-result extraction supports nodes, relationships, paths and nested containers, and reports omitted relationships whose endpoints were not returned.
+- Added cross-platform tests and Windows VSIX build/release automation for this fork.
 
 ### 0.2.1
 - Smaller package: unused dependencies are no longer shipped (571 → 40 files), so the extension installs and loads faster.
