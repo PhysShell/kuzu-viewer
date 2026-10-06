@@ -2,7 +2,7 @@
   "name": "kuzu-explorer",
   "displayName": "Kuzu Explorer",
   "description": "Browse Kuzu graph databases inside VS Code: schema tree, table data, Cypher queries and a graph view.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "gaintlabs",
   "license": "MIT",
   "repository": {
